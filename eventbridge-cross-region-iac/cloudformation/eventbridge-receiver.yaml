@@ -1,0 +1,106 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "EventBridge Cross-Region Routing (Receiver)"
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "General Information"
+        Parameters:
+          - SystemName
+          - EnvironmentName
+
+Parameters:
+  SystemName:
+    Type: String
+    Default: example
+  EnvironmentName:
+    Type: String
+    AllowedValues: [prd, stg, dev]
+    Default: dev
+
+Resources:
+  ReceiverEventBus:
+    Type: AWS::Events::EventBus
+    Properties:
+      Name: !Sub "${SystemName}-${EnvironmentName}-eventbridge-bus-receiver"
+
+  ReceiverEventRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "${SystemName}-${EnvironmentName}-eventbridge-rule-receiver"
+      Description: "Publish event notificatons to SNS"
+      EventBusName: !Ref ReceiverEventBus
+      EventPattern: |
+        {
+          "source": ["aws.ec2"],
+          "detail-type": ["EC2 Instance State-change Notification"],
+          "detail": {
+            "state": ["running", "stopped"]
+          }
+        }
+      Targets:
+        - Id: "SNSTopic1"
+          Arn: !Ref SNSTopic
+
+  SNSTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub "${SystemName}-${EnvironmentName}-sns-topic"
+
+  SNSTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics:
+        - !Ref SNSTopic
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - "events.amazonaws.com"
+            Action:
+              - "sns:Publish"
+            Resource: !Ref SNSTopic
+
+  IAMRoleEventBridge:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${SystemName}-${EnvironmentName}-eventbridge-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - "events.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+
+  IAMPolicyEventBridge:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub "${SystemName}-${EnvironmentName}-eventbridge-policy"
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Action:
+              - "events:PutEvents"
+            Resource:
+              - !GetAtt ReceiverEventBus.Arn
+      Roles:
+        - !Ref IAMRoleEventBridge
+
+Outputs:
+  ReceiverEventBusARN:
+    Value: !GetAtt ReceiverEventBus.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}::ReceiverEventBusARN"
+
+  IAMRoleEventBridgeARN:
+    Value: !GetAtt IAMRoleEventBridge.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}::IAMRoleEventBridgeARN"

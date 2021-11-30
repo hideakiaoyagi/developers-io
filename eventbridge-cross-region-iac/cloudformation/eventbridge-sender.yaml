@@ -1,0 +1,46 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "EventBridge Cross-Region Routing (Sender)"
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "General Information"
+        Parameters:
+          - SystemName
+          - EnvironmentName
+      - Label:
+          default: "EventBridge Target Reference"
+        Parameters:
+          - TargetEventBusARN
+          - IAMRoleARN
+
+Parameters:
+  SystemName:
+    Type: String
+    Default: example
+  EnvironmentName:
+    Type: String
+    AllowedValues: [prd, stg, dev]
+    Default: dev
+  TargetEventBusARN:
+    Type: String
+  IAMRoleARN:
+    Type: String
+
+Resources:
+  SenderEventRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: !Sub "${SystemName}-${EnvironmentName}-eventbridge-rule-sender"
+      Description: "Send events to receiver EventBridge"
+      EventPattern: |
+        {
+          "source": ["aws.ec2"],
+          "detail-type": ["EC2 Instance State-change Notification"]
+        }
+      Targets:
+        - Id: "ReceiverEventBus"
+          Arn: !Ref TargetEventBusARN
+          RoleArn: !Ref IAMRoleARN
